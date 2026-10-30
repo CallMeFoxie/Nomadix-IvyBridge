@@ -1,0 +1,78 @@
+# Python and editor state
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+/venv/
+.vscode/
+.idea/
+
+# Compilers and native build products
+/Build/
+*.obj
+*.o
+*.ko
+*.efi
+*.pe
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.dll
+*.exe
+*.cmd
+*.o.cmd
+Module.symvers
+modules.order
+
+# Generated firmware images, extraction trees, and reports
+*.bin
+*.rom
+*.ROM
+*.fd
+*.cap
+*.dump/
+*.report.txt
+*.guids.csv
+*.map
+/output/*
+!/output/onda-exact/
+/output/onda-exact/*
+!/output/onda-exact/FLASH-ONDA.txt
+!/output/onda-exact/onda-stage4c.layout
+
+# Local analysis environments and downloaded reverse-engineering tools
+/analysis/
+/MEAnalyzer-*/
+/tools/Intel ME System Tools*/
+
+# Proprietary donor firmware and local extraction workspaces
+/ref bios/
+/ref microcode/
+/ASRock H61M 2/
+/P8H61-ASUS-4306/
+/bios_backup3/
+/stage2b/
+/acpi-4d3/
+
+# Machine captures and local FITC state
+/dmesg-*.txt
+/post-flash-dmesg.txt
+/fitc.log
+/lanner_me7.xml
+
+# Archives and temporary files
+*.zip
+*.7z
+*.rar
+*.tar
+*.tar.gz
+*.tmp
+*.bak
+*~
+Thumbs.db
+.DS_Store
