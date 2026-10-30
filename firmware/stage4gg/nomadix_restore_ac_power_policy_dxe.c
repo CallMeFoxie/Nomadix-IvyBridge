@@ -3,6 +3,9 @@
 #ifndef NOMADIX_ENABLE_DIAGNOSTIC_LOG
 #define NOMADIX_ENABLE_DIAGNOSTIC_LOG 1
 #endif
+#ifndef NOMADIX_STAGE4GG_ENTRY
+#define NOMADIX_STAGE4GG_ENTRY EfiMain
+#endif
 #define NOMADIX_ENABLE_PLCM_LPT 1
 #define NOMADIX_PLCM_STAGE_NAME "4GG"
 #define NOMADIX_STAGE4GC_ENTRY Stage4GGBaseEfiMain
@@ -100,7 +103,7 @@ static void EFIAPI ApplyRestoreAcPowerAtReadyToBoot(
     SerialWriteString("\r\n");
 }
 
-EFI_STATUS EFIAPI EfiMain(
+EFI_STATUS EFIAPI NOMADIX_STAGE4GG_ENTRY(
     EFI_HANDLE ImageHandle,
     EFI_SYSTEM_TABLE *SystemTable
 )

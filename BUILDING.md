@@ -186,6 +186,196 @@ Boot stack, 0x420000-0x7FFFFF:
 5650F9F79998B3690FFDE568E9181242132628B242AAFDA71B06F4ECB490D0FB
 ```
 
+## Building Intel 82583V UEFI PXE support
+
+Stage 4GI is an optional diagnostic successor to Stage 4GH. It is not part of
+the hardware-tested release chain and is not built by `build_release.py`.
+
+Required additional input:
+
+```text
+ref bios\PREBOOT\APPS\EFI\EFIx64\E9925X3.EFI
+Size 394560 bytes
+SHA-256 07122889AB1286F263286C1F8D07F8BE3AEAD8323882CB09E7CADE454D96E562
+```
+
+This is Intel PRO/1000 UEFI x64 PCI-E driver 9.9.25 from Intel Ethernet
+Connections Boot Utility release 31.3. Download the official [Intel Ethernet
+Connections Boot Utility, Preboot Images, and EFI
+Drivers](https://www.intel.com/content/www/us/en/download/15755/intel-ethernet-connections-boot-utility-preboot-images-and-efi-drivers.html)
+and extract `PREBOOT\APPS\EFI\EFIx64\E9925X3.EFI` to the path above. The
+binary is an external proprietary input and is not committed to this
+repository. Verify its size and SHA-256 before building; do not substitute a
+similarly named IA32 or older driver.
+
+Build after reproducing or otherwise obtaining the exact Stage 4GH base:
+
+```powershell
+py -3 tools\build_onda_intel_82583v_undi_image.py
+```
+
+Expected output:
+
+```text
+output\onda-exact\TEST_ONLY_stage4gi_intel-82583v-undi.bin
+SHA-256 81E53E198639F6FC3F502AB5C959A7B26ECC910081B4494E885A992D8B63E7A5
+```
+
+The builder replaces only the PE32 and UI sections of the existing
+automatically dispatched `RtkUndiDxe` FFS. Reusing that container lets the DXE
+dispatcher start Intel UNDI before AMI BDS performs its controller connection
+pass. The descriptor, ME, machine NVRAM, PEI, SEC, and both microcode FFS
+payloads are checked byte-for-byte. The embedded PE is extracted again and
+must exactly match the pinned Intel input.
+
+Stage 4GI is intended for a controlled hardware test with an external
+programmer available. The builder does not include or invoke Intel BootUtil.
+The Intel driver normally reads NIC NVM during dispatch and PXE operation, but
+it also contains explicit EEPROM-write paths for saved adapter configuration
+and the optional UNDI `NVDATA_WRITE` command. Do not enter or save Intel
+adapter configuration during the first test. For a strict persistence check,
+capture each NIC's complete NVM through Linux `ethtool -e` before and after
+testing and compare the dumps byte-for-byte.
+
+Stage 4GI hardware testing confirmed that the embedded Intel driver
+automatically binds all six controllers, but AMI BDS does not perform the
+second controller-connection pass needed for SNP/IP/PXE children before Boot
+menu enumeration. Stage 4GJ adds a protocol-notification callback for that
+specific step:
+
+```powershell
+py -3 tools\build_onda_network_reconnect_image.py
+```
+
+Expected output:
+
+```text
+output\onda-exact\TEST_ONLY_stage4gj_network-reconnect.bin
+SHA-256 5C78C0CE4E36B0293B8F26FFC5C3091C51DF22F5BA185289AA4AE74D054B40CA
+```
+
+The callback observes each newly installed
+`EFI_NETWORK_INTERFACE_IDENTIFIER_PROTOCOL_31` and recursively connects that
+handle while AMI is still performing BDS device connection. This image is
+structurally validated but not yet hardware-tested.
+
+Stage 4GJ testing showed that its notification-time connection did not attach
+`SnpDxe`, consistent with a reentrant connection attempt made before Intel
+`DriverBinding.Start()` returned. Stage 4GK defers and retries the same action
+with a 10 ms periodic timer:
+
+```powershell
+py -3 tools\build_onda_deferred_network_reconnect_image.py
+```
+
+Expected output:
+
+```text
+output\onda-exact\TEST_ONLY_stage4gk_deferred-network-reconnect.bin
+SHA-256 E332BFA573506056CA0D88D3EC9590D411D293A9AB3DE6EDCBACB8DD791C112E
+```
+
+Each NII handle is accepted only after
+`EFI_SIMPLE_NETWORK_PROTOCOL` is present. The timer stops after all six
+interfaces attach or after two seconds. Direct serial markers remain enabled
+independently of the quiet Stage 4GH diagnostic setting.
+
+Stage 4GK hardware testing reported zero NII handles during its complete
+two-second window. Intel was nevertheless bound to all six PCI controllers.
+The Intel source shows that this intermediate state exposes
+`EFI_NII_POINTER_PROTOCOL` on each PCI parent before a second connection
+creates the MAC/NII child. Stage 4GL polls and connects those pointer handles:
+
+```powershell
+py -3 tools\build_onda_nii_pointer_reconnect_image.py
+```
+
+Expected output:
+
+```text
+output\onda-exact\TEST_ONLY_stage4gl_nii-pointer-reconnect.bin
+SHA-256 4119581AA02F81674B3A2A9007DAD04D0D123E429DBF6F6F5F6F5F00ABBE0193
+```
+
+The same pointer protocol is installed on each new MAC child, so the timer
+also performs the subsequent connection that attaches `SnpDxe`.
+
+Stage 4GL hardware inspection showed that the bound Intel PCI parent actually
+exposes only Device Path and PCI I/O protocols. Stage 4GM therefore locates
+standard PCI I/O handles, reads PCI configuration offset zero, filters exact
+vendor/device ID `8086:150C`, and reconnects only those six parents before
+connecting their new NII children:
+
+```powershell
+py -3 tools\build_onda_pci_network_reconnect_image.py
+```
+
+Expected output:
+
+```text
+output\onda-exact\TEST_ONLY_stage4gm_pci-network-reconnect.bin
+SHA-256 DB1AC3E848A6B0CE6252CBEB9EFD8C88B3DFF41D37EEC8D0D4CCC02A394DB8A7
+```
+
+Stage 4GM hardware testing created all six network configuration pages and
+generic AMI network boot entries, causing long serial initialization and
+showing `<null string>` titles in the old AMI HII browser.
+
+Stage 4GN attempted to limit Intel binding to the first onboard NIC, but
+hardware testing showed that the Nomadix DXE ran before Intel installed its
+Driver Binding. It returned `EFI_NOT_FOUND` from its entry point and stalled
+DXE/BDS. **Stage 4GN is unsafe and must not be flashed.**
+
+Stage 4GO implements the same policy safely through Driver Binding protocol
+notification:
+
+```powershell
+py -3 tools\build_onda_notified_single_port_pxe_image.py
+```
+
+Expected output:
+
+```text
+output\onda-exact\TEST_ONLY_stage4go_notified-single-port-pxe.bin
+SHA-256 EB153383EC033EC12D6FDD579C68F09ABB1094A5352BC6D9C8CAD9904AF37BE4
+```
+
+The single-port filter wraps Intel Driver Binding `Supported()` before AMI
+BDS ConnectAll. If Intel is not present yet, Stage 4GO waits for its protocol
+installation and still returns `EFI_SUCCESS` from the Nomadix DXE entry point.
+Only after the filter is installed does it arm the network reconnect timer. It
+returns unsupported for the other five `8086:150C` controllers, avoiding their
+HII registration and PXE timeout paths. Intel's package-list GUID
+`77F2EA2F-4312-4569-85C4-583ACD8DB7E2` is then removed through the standard
+HII Database protocol. Keep IPv6 PXE disabled so the old AMI BDS creates only
+one generic IPv4 `UEFI: Network Card` entry.
+
+Hardware testing confirmed Stage 4GO. Stage 4GP compiles out only the network
+diagnostic output while retaining the verified single-port behavior:
+
+```powershell
+py -3 tools\build_onda_quiet_single_port_pxe_image.py
+```
+
+Expected output:
+
+```text
+output\onda-exact\TEST_ONLY_stage4gp_quiet-single-port-pxe.bin
+SHA-256 1452E92B27AC2244B59164DBDF111BF9D15EDE08EB3EB54B4DA1F18E6FED7B79
+```
+
+UEFI PXE support is intentionally limited to the first physical Ethernet port
+at PCI `0000:01:00.0`, MAC `00:50:E8:02:C3:3E`. This is a documented platform
+limitation rather than a temporary diagnostic setting. OpenWrt remains able to
+bind all six controllers with `e1000e`.
+
+For another board, do not copy the hard-coded PCI location. First identify the
+desired controller's segment, bus, device, function, PCI ID, and permanent MAC
+from Linux and UEFI Shell. Adapt the filter to that verified location, retain
+an external recovery programmer, and test a diagnostic build before removing
+serial markers. If multiple ports must support PXE, expect the old AMI BDS to
+initialize them serially and to generate duplicate generic boot descriptions.
+
 The `.efi` output is the embedded DXE driver, not a complete flash image.
 
 ### Why the exact release chain is required

@@ -36,6 +36,22 @@ Stage 4GG is the equivalent diagnostic build with serial status markers.
 Detailed build hashes, hardware results, and recovery instructions are in
 [FLASH-ONDA.txt](output/onda-exact/FLASH-ONDA.txt).
 
+PXE support is available as a separate first-port-only build line:
+
+```text
+Hardware-tested diagnostic:
+output/onda-exact/TEST_ONLY_stage4go_notified-single-port-pxe.bin
+SHA-256 EB153383EC033EC12D6FDD579C68F09ABB1094A5352BC6D9C8CAD9904AF37BE4
+
+Quiet successor, structurally validated:
+output/onda-exact/TEST_ONLY_stage4gp_quiet-single-port-pxe.bin
+SHA-256 1452E92B27AC2244B59164DBDF111BF9D15EDE08EB3EB54B4DA1F18E6FED7B79
+```
+
+See [UEFI PXE support](#uefi-pxe-support) for the supported port, Intel input,
+Setup policy, limitations, and safety notes. The original Stage 4GH remains
+the hardware-tested quiet non-PXE release.
+
 The `.bin` file is the complete 8 MiB SPI flash image. The similarly named
 `.efi` file is only the embedded Nomadix DXE driver and is **not** a flashable
 BIOS image.
@@ -46,8 +62,12 @@ BIOS image.
 
 There is no installer executable. For a specific appliance, hand over:
 
-1. `TEST_ONLY_stage4gh_quiet-final.bin`, or the hardware-tested diagnostic
-   `TEST_ONLY_stage4gg_restore-ac-power-policy.bin`;
+1. one appropriate complete image:
+   - `TEST_ONLY_stage4gh_quiet-final.bin` for the quiet non-PXE release;
+   - `TEST_ONLY_stage4go_notified-single-port-pxe.bin` for hardware-tested PXE
+     diagnostics;
+   - `TEST_ONLY_stage4gp_quiet-single-port-pxe.bin` for the quiet PXE
+     successor after local hardware verification;
 2. the corresponding SHA-256 value;
 3. [onda-stage4c.layout](output/onda-exact/onda-stage4c.layout);
 4. the recovery and test notes in
@@ -159,6 +179,79 @@ See [BUILDING.md](BUILDING.md) for the supported Stage 4GH rebuild, donor
 requirements, the complete construction outline, and a detailed methodology
 for adapting the work to another motherboard.
 
+## UEFI PXE support
+
+The FW-7582 has six onboard Intel 82583V controllers with PCI ID `8086:150C`.
+The matched ONDA firmware already contains SNP, MNP, DHCP, IPv4/IPv6, MTFTP,
+UDP, TCP, and UEFI PXE Base Code drivers, but its hardware-specific UNDI
+driver targets Realtek controllers.
+
+The PXE build replaces the existing `RtkUndiDxe` executable with Intel
+PRO/1000 UEFI x64 PCI-E driver 9.9.25, file `E9925X3.EFI`, obtained from the
+official [Intel Ethernet Connections Boot Utility, Preboot Images, and EFI
+Drivers](https://www.intel.com/content/www/us/en/download/15755/intel-ethernet-connections-boot-utility-preboot-images-and-efi-drivers.html).
+The Intel package and binary are not redistributed by this repository.
+
+Pinned input:
+
+```text
+PREBOOT\APPS\EFI\EFIx64\E9925X3.EFI
+Size 394560 bytes
+SHA-256 07122889AB1286F263286C1F8D07F8BE3AEAD8323882CB09E7CADE454D96E562
+```
+
+### Supported PXE policy
+
+UEFI PXE is intentionally limited to:
+
+```text
+Physical port: first onboard Ethernet port
+PCI location:  0000:01:00.0
+MAC address:   00:50:E8:02:C3:3E
+Protocol:      IPv4 PXE
+```
+
+The other five ports are deliberately not UEFI PXE-capable. Initializing all
+six ports added about five seconds per port, created six indistinguishable
+`UEFI: Network Card` entries, and exposed incompatible Intel HII pages as
+`<null string> - MAC`. Limiting preboot networking to one port avoids those
+delays and ambiguous entries. OpenWrt is unaffected and continues to expose
+all six controllers through `e1000e`.
+
+Required Setup policy:
+
+```text
+Network Stack       Enabled
+IPv4 PXE Support    Enabled
+IPv6 PXE Support    Disabled
+```
+
+The old AMI BDS generates the description `UEFI: Network Card`; it does not
+include IPv4, port number, or MAC address. With only one preboot-capable port,
+that generic entry is unambiguous.
+
+Stage 4GO is the hardware-tested diagnostic image. Stage 4GP compiles out only
+the `[NOMADIX-4G...]` network diagnostics and retains the same single-port
+policy. Intel adapter HII packages are removed after initialization because
+the old AMI browser cannot render their dynamic labels correctly and their
+configuration callbacks include NIC EEPROM write operations.
+
+Do not use Intel BootUtil to update NIC NVM. Ordinary UNDI/PXE initialization
+is expected to read NVM, not rewrite it, but the Intel driver contains explicit
+configuration and `NVDATA_WRITE` paths. Do not save Intel adapter
+configuration. For byte-level verification, capture each NIC EEPROM with
+Linux `ethtool -e` before and after testing.
+
+Stage 4GN is unsafe and must never be flashed. It can be identified by
+SHA-256 `1516D1E92E4D98D723BDC9B814AB3E367091AD9C7EB9B7D095ED92C4B12B59E6`.
+It returned `EFI_NOT_FOUND` before Intel Driver Binding was installed and
+stalled DXE/BDS. Stage 4GO and 4GP use protocol notification and do not have
+that dispatch-order failure.
+
+Complete bring-up history, recovery notes, and intermediate-stage results are
+in [FLASH-ONDA.txt](output/onda-exact/FLASH-ONDA.txt). Reproducible PXE build
+commands are in [BUILDING.md](BUILDING.md).
+
 ## Final flash layout and provenance
 
 | Flash range | Origin | Contents and role |
@@ -170,6 +263,7 @@ for adapting the work to another motherboard.
 | `0x580000-0x75FFFF` | ONDA H61ITX | Matched ONDA Aptio DXE/boot stack, including the nested FV contract expected by the ONDA Ivy PEI/DXE IPL implementation, AMI Setup/TSE, BDS, ACPI, and platform drivers. |
 | `0x760000-0x7FFFFF` | ONDA H61ITX, modified | Exact-layout 640 KiB Ivy Bridge SEC/PEI volume at physical address `0xFFF60000`. `WdtAppPei` was disabled during bring-up. |
 | ONDA `ITEPOWERFAILDXE` PE32 section | Nomadix | Replaced by the cumulative freestanding x86-64 DXE driver. The original FFS GUID and TRUE/END dependency section are retained. |
+| ONDA `RtkUndiDxe` PE32 and UI sections, PXE stages | Intel official Preboot driver | Replacement with `E9925X3.EFI` 9.9.25 for the onboard Intel 82583V (`8086:150C`). The existing automatically dispatched DXE FFS container is retained. |
 | Two ONDA microcode FFS files | Intel official microcode | CPUID `306A9` was updated from revision `0x1C` to official Intel revision `0x21`; duplicate `306A9` records were removed. Other records remain unchanged. |
 
 ## What comes from each motherboard firmware

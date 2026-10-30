@@ -5416,6 +5416,413 @@ Recovery:
   required, or Stage 4GB as the earlier known-good recovery image.
 
 
+STAGE 4GI - INTEL 82583V UEFI UNDI / PXE
+=========================================
+
+Official Intel source:
+  https://www.intel.com/content/www/us/en/download/15755/intel-ethernet-connections-boot-utility-preboot-images-and-efi-drivers.html
+
+Pinned file:
+  PREBOOT\APPS\EFI\EFIx64\E9925X3.EFI
+  Size 394560 bytes
+  SHA-256 07122889ab1286f263286c1f8d07f8be3aead8323882cb09e7cade454d96e562
+
+Status:
+  HARDWARE TESTED, INCOMPLETE PXE ENUMERATION.
+
+Image:
+  TEST_ONLY_stage4gi_intel-82583v-undi.bin
+
+Base:
+  Hardware-tested quiet Stage 4GH, SHA-256:
+  3d843daddbb95664d51341b76ba8ad8e707f26fc2d48747aeaa61a895aa0fb42
+
+Purpose:
+  Dispatch the official Intel PRO/1000 UEFI x64 PCI-E driver early enough for
+  AMI BDS to discover the six onboard Intel 82583V controllers and create UEFI
+  PXE boot paths.
+
+Construction:
+  - replaces only the PE32 and UI sections of the existing RtkUndiDxe FFS;
+  - retains its automatically dispatched DXE file container and GUID;
+  - embeds Intel E9925X3.EFI 9.9.25 exactly;
+  - supports the observed PCI ID 8086:150C;
+  - the builder does not invoke BootUtil or intentionally write NIC NVM;
+  - preserves descriptor, ME, NVRAM, PEI, SEC, and microcode bytes.
+
+NIC NVM caution:
+  The Intel UNDI driver normally reads NVM during initialization and ordinary
+  PXE operation. Its source and the E9925X3.EFI binary also include explicit
+  EEPROM-write support for saved adapter configuration; the UNDI interface has
+  an optional NVDATA write operation. Do not open or save Intel adapter
+  configuration during the first test. Capture all six NIC NVM images with
+  Linux ethtool -e before and after the test when byte-level proof is required.
+
+Expected full-image SHA-256:
+  81e53e198639f6fc3f502ab5c959a7b26ecc910081b4494e885a992d8b63e7a5
+
+Hardware test:
+  1. Remove the temporary Intel Driver#### and invalid manual PXE Boot####
+     experiments from NVRAM before flashing.
+  2. Keep the external SPI programmer and Stage 4GH recovery image available.
+  3. Flash only after confirming the complete image hash.
+  4. Confirm POST and serial Setup still work.
+  5. Run drivers and verify Intel PRO/1000 has nonzero #D/#C without load or
+     connect commands.
+  6. Run devices and verify MAC, IPv4, and IPv6 children appear automatically.
+  7. Confirm AMI Boot Manager exposes a UEFI IPv4 option for an 82583V port.
+  8. Test DHCP/PXE with a cable in only the selected port.
+  9. Confirm all six ports still work under OpenWrt with e1000e.
+
+Recovery:
+  Restore hardware-tested Stage 4GH with the external SPI programmer.
+
+
+Observed Stage 4GI hardware result:
+  - POST and normal boot succeed;
+  - Intel82583vUndiDxe dispatches automatically;
+  - Intel PRO/1000 9.9.25 binds all six 82583V controllers (#D=6);
+  - each PCI NIC shows the Intel driver without load or explicit driver handle;
+  - AMI does not perform the second ConnectController pass automatically;
+  - a manual connect creates the MAC child and subsequent connects attach the
+    enabled ONDA SNP/IP/PXE stack;
+  - this happens after Boot menu enumeration, so no UEFI IPv4 entry appears.
+
+
+STAGE 4GJ - AUTOMATIC NII NETWORK RECONNECT
+============================================
+
+Status:
+  HARDWARE TESTED, DID NOT ATTACH SNP AUTOMATICALLY.
+
+Image:
+  TEST_ONLY_stage4gj_network-reconnect.bin
+
+Base:
+  Hardware-tested Stage 4GI, SHA-256:
+  81e53e198639f6fc3f502ab5c959a7b26ecc910081b4494e885a992d8b63e7a5
+
+Purpose:
+  Perform the missing second controller-connection pass before AMI constructs
+  the Boot menu.
+
+Implementation:
+  - retains the exact Stage 4GI Intel E9925X3.EFI payload;
+  - registers for EFI_NETWORK_INTERFACE_IDENTIFIER_PROTOCOL_31;
+  - recursively connects each new NII handle as Intel creates it;
+  - allows SnpDxe and the enabled ONDA DHCP/IP/PXE stack to attach during BDS;
+  - logs one [NOMADIX-4GJ] NII/CONNECT line per discovered interface.
+
+Expected full-image SHA-256:
+  5c78c0ce4e36b0293b8f26ffc5c3091c51df22f5ba185289aa4ae74d054b40ca
+
+Hardware test:
+  1. Keep Network Stack and IPv4 PXE Support enabled in Setup.
+  2. Boot without any external Driver#### or manual PXE Boot#### entries.
+  3. Capture the [NOMADIX-4GJ] lines.
+  4. Confirm Intel PRO/1000 reports #D=6.
+  5. Confirm MAC and IPv4 children exist without shell connect commands.
+  6. Confirm UEFI IPv4 entries appear in the AMI Boot menu.
+  7. Test DHCP/PXE with a cable connected to one port.
+
+Recovery:
+  Restore hardware-tested Stage 4GH or bootable Stage 4GI with the external
+  SPI programmer.
+
+
+Observed Stage 4GJ hardware result:
+  - Intel PRO/1000 still binds all six controllers (#D=6);
+  - SnpDxe and all ONDA network services remain unbound (#D=-);
+  - no MAC/IP/PXE stack is created automatically;
+  - Stage 4GJ inherited Stage 4GH quiet serial output, so its original callback
+    marker was suppressed;
+  - the notification callback most likely attempted ConnectController
+    reentrantly before Intel DriverBinding.Start returned.
+
+
+STAGE 4GK - DEFERRED NETWORK RECONNECT
+======================================
+
+Status:
+  HARDWARE TESTED, FOUND ZERO NII HANDLES.
+
+Image:
+  TEST_ONLY_stage4gk_deferred-network-reconnect.bin
+
+Base:
+  Hardware-tested Stage 4GJ, SHA-256:
+  5c78c0ce4e36b0293b8f26ffc5c3091c51df22f5ba185289aa4ae74d054b40ca
+
+Purpose:
+  Retry NII connection after Intel DriverBinding.Start has returned rather
+  than from its protocol-notification call stack.
+
+Implementation:
+  - retains the exact Stage 4GJ Intel E9925X3.EFI payload;
+  - polls NII handles every 10 ms for up to two seconds;
+  - recursively connects each unbound NII handle;
+  - accepts success only after EFI_SIMPLE_NETWORK_PROTOCOL appears;
+  - stops after all six handles attach;
+  - uses direct serial output independent of Stage 4GH quiet diagnostics.
+
+Expected full-image SHA-256:
+  e332bfa573506056ca0d88d3ec9590d411d293a9ab3de6edcbacb8dd791c112e
+
+Expected serial output:
+  [NOMADIX-4GK] TIMER-ARMED
+  [NOMADIX-4GK] NII=<handle> CONNECT=<status> SNP=0000000000000000
+  [NOMADIX-4GK] COMPLETE COUNT=0000000000000006 RETRIES=<count>
+
+Interpretation:
+  - no TIMER-ARMED: the Stage 4GK wrapper did not arm its UEFI timer;
+  - TIMER-ARMED but COUNT=0: timer works, but no NII handles were found or SNP
+    could not attach;
+  - one NII/SNP line per port and COUNT=6: all interfaces attached before the
+    retry timer stopped;
+  - COUNT=6 but no Boot menu entry: network attachment is complete and the
+    remaining problem is specifically AMI Boot#### enumeration policy.
+
+Recovery:
+  Restore hardware-tested Stage 4GH or bootable Stage 4GI with the external
+  SPI programmer.
+
+
+Observed Stage 4GK hardware result:
+  [NOMADIX-4GK] COMPLETE COUNT=0000000000000000 RETRIES=00000000000000C8
+
+  The timer ran for all 200 attempts, but Intel had not created any NII child
+  handles. Intel remained bound to all six PCI controllers and SnpDxe remained
+  unbound. The Intel source confirms that this intermediate state exposes
+  EFI_NII_POINTER_PROTOCOL on each PCI parent handle instead.
+
+
+STAGE 4GL - INTEL NII POINTER RECONNECT
+=======================================
+
+Status:
+  HARDWARE TESTED, FOUND ZERO NII POINTER SNP HANDLES.
+
+Image:
+  TEST_ONLY_stage4gl_nii-pointer-reconnect.bin
+
+Base:
+  Hardware-tested Stage 4GK, SHA-256:
+  e332bfa573506056ca0d88d3ec9590d411d293a9ab3de6edcbacb8dd791c112e
+
+Purpose:
+  Reproduce both successful manual connect steps by targeting Intel's private
+  EFI_NII_POINTER_PROTOCOL handles.
+
+Implementation:
+  - polls GUID E3161450-AD0F-11D9-9669-0800200C9A66 every 10 ms;
+  - first connects the six PCI parent handles to create MAC/NII children;
+  - then connects the new pointer-bearing MAC children to attach SnpDxe;
+  - verifies EFI_SIMPLE_NETWORK_PROTOCOL on six handles before completion;
+  - retains direct serial diagnostics.
+
+Expected full-image SHA-256:
+  4119581aa02f81674b3a2a9007dad04d0d123e429dbf6f6f5f6f5f00abbe0193
+
+Expected serial output:
+  [NOMADIX-4GK] TIMER-ARMED
+  [NOMADIX-4GL] TIMER-ARMED
+  [NOMADIX-4GL] SNP-HANDLE=<handle> CONNECT=<status>
+  [NOMADIX-4GL] COMPLETE COUNT=0000000000000006 RETRIES=<count>
+
+Recovery:
+  Restore hardware-tested Stage 4GH or bootable Stage 4GI with the external
+  SPI programmer.
+
+
+Observed Stage 4GL hardware result:
+  [NOMADIX-4GL] COMPLETE COUNT=0000000000000000 RETRIES=00000000000000C8
+
+  Shell dh on the first bound NIC parent showed only DevicePath and PCIIO.
+  The vendor binary did not expose the expected private NII Pointer protocol
+  in this intermediate state.
+
+
+STAGE 4GM - PCI-ID FILTERED NETWORK RECONNECT
+=============================================
+
+Status:
+  HARDWARE TESTED, ALL SIX NETWORK PATHS CREATED.
+
+Image:
+  TEST_ONLY_stage4gm_pci-network-reconnect.bin
+
+Base:
+  Hardware-tested Stage 4GL, SHA-256:
+  4119581aa02f81674b3a2a9007dad04d0d123e429dbf6f6f5f6f5f00abbe0193
+
+Implementation:
+  - locates standard EFI PCI I/O handles;
+  - reads PCI configuration vendor/device ID at offset zero;
+  - reconnects only exact 8086:150C controllers;
+  - then connects resulting NII children and verifies SNP;
+  - does not connect unrelated PCI devices.
+
+Expected full-image SHA-256:
+  db1ac3e848a6b0ce6252cbeb9efd8c88b3dff41d37eec8d0d4ccc02a394db8a7
+
+Expected serial output:
+  [NOMADIX-4GM] TIMER-ARMED
+  [NOMADIX-4GM] PCI=<handle> CONNECT=0000000000000000
+  [NOMADIX-4GM] SNP=<handle> CONNECT=<status>
+  [NOMADIX-4GM] COMPLETE PCI=0000000000000006
+                  SNP=0000000000000006 RETRIES=<count>
+
+Recovery:
+  Restore hardware-tested Stage 4GH or bootable Stage 4GI with the external
+  SPI programmer.
+
+
+Observed Stage 4GM hardware result:
+  - six network configuration pages appeared in Advanced;
+  - all were rendered as <null string> followed by their MAC address;
+  - six generic UEFI: Network Card entries were created;
+  - progressive network initialization added roughly five seconds per port;
+  - final diagnostic reported PCI=6, SNP=0 because its validation looked for
+    SNP on NII handles while the complete downstream stack used other handles.
+
+
+STAGE 4GN - SINGLE-PORT PXE WITHOUT INTEL HII
+=============================================
+
+Status:
+  UNSAFE. HARDWARE TESTED FAILURE. DO NOT FLASH.
+
+Image:
+  TEST_ONLY_stage4gn_single-port-pxe.bin
+
+Base:
+  Hardware-tested Stage 4GM, SHA-256:
+  db1ac3e848a6b0ce6252cbeb9efd8c88b3dff41d37eec8d0d4ccc02a394db8a7
+
+Purpose:
+  Provide PXE only on the first physical 82583V port while removing the
+  incompatible Intel adapter-configuration pages.
+
+Implementation:
+  - wraps Intel Driver Binding version 09092500 before AMI ConnectAll;
+  - allows the exact PCI location 0000:01:00.0;
+  - returns EFI_UNSUPPORTED for the other five 8086:150C controllers;
+  - connects only the first NIC and its downstream network stack;
+  - removes Intel HII package-list GUID
+    77F2EA2F-4312-4569-85C4-583ACD8DB7E2;
+  - leaves the exact Intel E9925X3.EFI payload unchanged.
+
+Expected full-image SHA-256:
+  1516d1e92e4d98d723bdc9b814ab3e367091ad9c7eb9b7d095ed92c4b12b59e6
+
+Observed failure:
+  [NOMADIX-4GN] FILTER=800000000000000E
+
+  EFI_NOT_FOUND was returned because Intel Driver Binding had not yet been
+  installed when the Nomadix DXE entry point ran. Returning that status from
+  DXE stalled later dispatch/BDS. Stage 4GN must not be flashed.
+
+Setup:
+  - Network Stack: Enabled
+  - IPv4 PXE Support: Enabled
+  - IPv6 PXE Support: Disabled
+
+Expected serial output:
+  [NOMADIX-4GN] FILTER=0000000000000000
+  [NOMADIX-4GN] TIMER-ARMED
+  [NOMADIX-4GN] INTEL-HII-REMOVED
+  [NOMADIX-4GN] COMPLETE SNP=0000000000000001 RETRIES=<count>
+
+Expected UI:
+  - no Intel <null string> adapter pages in Advanced;
+  - one generic UEFI: Network Card boot entry for MAC 00:50:E8:02:C3:3E.
+
+The generic boot description comes from the old AMI BDS rather than Intel
+UNDI. Replacing it with a custom IPv4/MAC description would require patching
+AMI boot-option generation and is intentionally outside this stage.
+
+Recovery:
+  Restore hardware-tested Stage 4GH or bootable Stage 4GM with the external
+  SPI programmer.
+
+
+STAGE 4GO - NOTIFIED SINGLE-PORT PXE
+====================================
+
+Status:
+  HARDWARE TESTED. SINGLE-PORT FILTER, PXE, AND HII REMOVAL WORK.
+
+Image:
+  TEST_ONLY_stage4go_notified-single-port-pxe.bin
+
+Base:
+  Hardware-tested Stage 4GM, SHA-256:
+  db1ac3e848a6b0ce6252cbeb9efd8c88b3dff41d37eec8d0d4ccc02a394db8a7
+
+Purpose:
+  Safely implement the intended Stage 4GN single-port and HII policy without
+  depending on Intel dispatch order.
+
+Implementation:
+  - registers for EFI_DRIVER_BINDING_PROTOCOL installation;
+  - returns EFI_SUCCESS while waiting for Intel;
+  - wraps Intel Supported() immediately when version 09092500 appears;
+  - arms reconnect only after the wrapper is active;
+  - permits only PCI 0000:01:00.0;
+  - removes the incompatible Intel HII package list after initialization.
+
+Expected full-image SHA-256:
+  eb153383ec033ec12d6fdd579c68f09abb1094a5352bc6d9c8cad9904af37be4
+
+Expected serial output:
+  [NOMADIX-4GO] FILTER-WAIT-ARMED
+  [NOMADIX-4GO] FILTER=0000000000000000
+  [NOMADIX-4GO] FILTERED-TIMER-ARMED
+  [NOMADIX-4GN] INTEL-HII-REMOVED
+  [NOMADIX-4GN] COMPLETE SNP=0000000000000001 RETRIES=<count>
+
+Recovery:
+  Restore hardware-tested Stage 4GH or bootable Stage 4GM with the external
+  SPI programmer.
+
+
+STAGE 4GP - QUIET SINGLE-PORT PXE
+=================================
+
+Status:
+  EXPERIMENTAL. STRUCTURALLY VALIDATED, NOT YET HARDWARE TESTED.
+
+Image:
+  TEST_ONLY_stage4gp_quiet-single-port-pxe.bin
+
+Base:
+  Hardware-tested Stage 4GO, SHA-256:
+  eb153383ec033ec12d6fdd579c68f09abb1094a5352bc6d9c8cad9904af37be4
+
+Purpose:
+  Preserve verified Stage 4GO behavior without Nomadix network diagnostics.
+
+Policy:
+  - UEFI PXE is intentionally supported only on the first physical port;
+  - PCI location: 0000:01:00.0;
+  - MAC address: 00:50:E8:02:C3:3E;
+  - the other five ports are not UEFI PXE capable by design;
+  - OpenWrt e1000e still binds and uses all six ports normally.
+
+Expected full-image SHA-256:
+  1452e92b27ac2244b59164dbdf111bf9d15ede08eb3eb54b4da1f18e6fed7b79
+
+Structural validation:
+  - exact Stage 4GO behavior retained;
+  - embedded Intel E9925X3.EFI remains byte-identical;
+  - no [NOMADIX-4G...] string remains in the embedded Nomadix EFI driver;
+  - descriptor, ME, NVRAM, PEI, SEC, and microcode remain protected.
+
+Recovery:
+  Restore hardware-tested Stage 4GO for network diagnostics or Stage 4GH for
+  the original non-PXE quiet release.
+
+
 REPRODUCIBLE RELEASE BUILD
 ==========================
 

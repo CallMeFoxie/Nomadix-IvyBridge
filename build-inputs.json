@@ -60,6 +60,121 @@
       "sha256": "3D843DADDBB95664D51341B76BA8AD8E707F26FC2D48747AEAA61A895AA0FB42"
     }
   },
+  "pxe_stage4gi": {
+    "status": "experimental_not_hardware_tested",
+    "base": {
+      "path": "output/onda-exact/TEST_ONLY_stage4gh_quiet-final.bin",
+      "size": 8388608,
+      "sha256": "3D843DADDBB95664D51341B76BA8AD8E707F26FC2D48747AEAA61A895AA0FB42"
+    },
+    "inputs": [
+      {
+        "id": "intel-82583v-undi-9925",
+        "path": "ref bios/PREBOOT/APPS/EFI/EFIx64/E9925X3.EFI",
+        "size": 394560,
+        "sha256": "07122889AB1286F263286C1F8D07F8BE3AEAD8323882CB09E7CADE454D96E562",
+        "description": "Intel PRO/1000 UEFI x64 PCI-E driver 9.9.25 from Intel Ethernet Connections Boot Utility release 31.3.",
+        "source": "https://www.intel.com/content/www/us/en/download/15755/intel-ethernet-connections-boot-utility-preboot-images-and-efi-drivers.html",
+        "redistributable": false
+      }
+    ],
+    "output": {
+      "path": "output/onda-exact/TEST_ONLY_stage4gi_intel-82583v-undi.bin",
+      "size": 8388608,
+      "sha256": "81E53E198639F6FC3F502AB5C959A7B26ECC910081B4494E885A992D8B63E7A5"
+    }
+  },
+  "pxe_stage4gj": {
+    "status": "experimental_not_hardware_tested",
+    "base": {
+      "path": "output/onda-exact/TEST_ONLY_stage4gi_intel-82583v-undi.bin",
+      "size": 8388608,
+      "sha256": "81E53E198639F6FC3F502AB5C959A7B26ECC910081B4494E885A992D8B63E7A5"
+    },
+    "output": {
+      "path": "output/onda-exact/TEST_ONLY_stage4gj_network-reconnect.bin",
+      "size": 8388608,
+      "sha256": "5C78C0CE4E36B0293B8F26FFC5C3091C51DF22F5BA185289AA4AE74D054B40CA"
+    }
+  },
+  "pxe_stage4gk": {
+    "status": "experimental_not_hardware_tested",
+    "base": {
+      "path": "output/onda-exact/TEST_ONLY_stage4gj_network-reconnect.bin",
+      "size": 8388608,
+      "sha256": "5C78C0CE4E36B0293B8F26FFC5C3091C51DF22F5BA185289AA4AE74D054B40CA"
+    },
+    "output": {
+      "path": "output/onda-exact/TEST_ONLY_stage4gk_deferred-network-reconnect.bin",
+      "size": 8388608,
+      "sha256": "E332BFA573506056CA0D88D3EC9590D411D293A9AB3DE6EDCBACB8DD791C112E"
+    }
+  },
+  "pxe_stage4gl": {
+    "status": "experimental_not_hardware_tested",
+    "base": {
+      "path": "output/onda-exact/TEST_ONLY_stage4gk_deferred-network-reconnect.bin",
+      "size": 8388608,
+      "sha256": "E332BFA573506056CA0D88D3EC9590D411D293A9AB3DE6EDCBACB8DD791C112E"
+    },
+    "output": {
+      "path": "output/onda-exact/TEST_ONLY_stage4gl_nii-pointer-reconnect.bin",
+      "size": 8388608,
+      "sha256": "4119581AA02F81674B3A2A9007DAD04D0D123E429DBF6F6F5F6F5F00ABBE0193"
+    }
+  },
+  "pxe_stage4gm": {
+    "status": "experimental_not_hardware_tested",
+    "base": {
+      "path": "output/onda-exact/TEST_ONLY_stage4gl_nii-pointer-reconnect.bin",
+      "size": 8388608,
+      "sha256": "4119581AA02F81674B3A2A9007DAD04D0D123E429DBF6F6F5F6F5F00ABBE0193"
+    },
+    "output": {
+      "path": "output/onda-exact/TEST_ONLY_stage4gm_pci-network-reconnect.bin",
+      "size": 8388608,
+      "sha256": "DB1AC3E848A6B0CE6252CBEB9EFD8C88B3DFF41D37EEC8D0D4CCC02A394DB8A7"
+    }
+  },
+  "pxe_stage4gn": {
+    "status": "unsafe_do_not_flash_returns_efi_not_found_from_dxe",
+    "base": {
+      "path": "output/onda-exact/TEST_ONLY_stage4gm_pci-network-reconnect.bin",
+      "size": 8388608,
+      "sha256": "DB1AC3E848A6B0CE6252CBEB9EFD8C88B3DFF41D37EEC8D0D4CCC02A394DB8A7"
+    },
+    "output": {
+      "path": "output/onda-exact/TEST_ONLY_stage4gn_single-port-pxe.bin",
+      "size": 8388608,
+      "sha256": "1516D1E92E4D98D723BDC9B814AB3E367091AD9C7EB9B7D095ED92C4B12B59E6"
+    }
+  },
+  "pxe_stage4go": {
+    "status": "hardware_tested",
+    "base": {
+      "path": "output/onda-exact/TEST_ONLY_stage4gm_pci-network-reconnect.bin",
+      "size": 8388608,
+      "sha256": "DB1AC3E848A6B0CE6252CBEB9EFD8C88B3DFF41D37EEC8D0D4CCC02A394DB8A7"
+    },
+    "output": {
+      "path": "output/onda-exact/TEST_ONLY_stage4go_notified-single-port-pxe.bin",
+      "size": 8388608,
+      "sha256": "EB153383EC033EC12D6FDD579C68F09ABB1094A5352BC6D9C8CAD9904AF37BE4"
+    }
+  },
+  "pxe_stage4gp": {
+    "status": "experimental_not_hardware_tested",
+    "base": {
+      "path": "output/onda-exact/TEST_ONLY_stage4go_notified-single-port-pxe.bin",
+      "size": 8388608,
+      "sha256": "EB153383EC033EC12D6FDD579C68F09ABB1094A5352BC6D9C8CAD9904AF37BE4"
+    },
+    "output": {
+      "path": "output/onda-exact/TEST_ONLY_stage4gp_quiet-single-port-pxe.bin",
+      "size": 8388608,
+      "sha256": "1452E92B27AC2244B59164DBDF111BF9D15EDE08EB3EB54B4DA1F18E6FED7B79"
+    }
+  },
   "stage1": {
     "inputs": [
       {
