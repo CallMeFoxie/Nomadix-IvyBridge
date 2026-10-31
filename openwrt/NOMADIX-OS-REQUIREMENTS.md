@@ -4,6 +4,13 @@ This is the living manifest for a future `nomadix-platform` OpenWrt package.
 It records hardware-verified requirements separately from items that still
 need validation against the selected OpenWrt release and APK feeds.
 
+A feed-ready implementation now lives in
+[`nomadix-platform`](nomadix-platform). Its production default continuously
+verifies full-speed PWM 255; the example dynamic curve remains opt-in until
+its minimum safe duty is established under controlled Xeon load. Watchdog and
+RAS are reported by the status command but are intentionally not enabled
+until their target-kernel behavior is hardware-tested.
+
 ## Package split
 
 Use two packages so the production appliance does not expose firmware-write

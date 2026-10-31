@@ -439,6 +439,13 @@ The most relevant final-stage sources are:
 - [stage4fy HII and fan implementation](firmware/stage4fy/nomadix_w83627_hii_formset_dxe.c)
 - [stage4gb SMBIOS branding](firmware/stage4gb/nomadix_foxnodix_smbios_branding_dxe.c)
 - [stage4gc PLCM implementation](firmware/stage4gc/nomadix_plcm_boot_message_dxe.c)
+
+OpenWrt runtime integration is available as a feed-ready package under
+[`openwrt/nomadix-platform`](openwrt/nomadix-platform). It provides a
+fail-safe `procd`-supervised fan daemon, UCI configuration, platform status,
+and a separately installable read-only flash maintenance package. Its default
+mode keeps every fan channel at full speed until a temperature curve has been
+validated under controlled Xeon load.
 - [stage4gg AC power policy](firmware/stage4gg/nomadix_restore_ac_power_policy_dxe.c)
 - [stage4gh quiet final wrapper](firmware/stage4gh/nomadix_quiet_final_dxe.c)
 

@@ -1,0 +1,105 @@
+#!/bin/sh
+
+failed=0
+mode="$(uci -q get nomadix-platform.main.mode 2>/dev/null || printf 'full\n')"
+
+value()
+{
+	[ -r "$1" ] && cat "$1" || printf 'unavailable\n'
+}
+
+find_hwmon()
+{
+	expected="$1"
+	for directory in /sys/class/hwmon/hwmon*; do
+		[ -r "$directory/name" ] || continue
+		name="$(cat "$directory/name")" || continue
+		case "$name" in
+		$expected)
+			printf '%s\n' "$directory"
+			return 0
+			;;
+		esac
+	done
+	return 1
+}
+
+printf 'Nomadix FW-7582 platform status\n'
+printf 'Configured fan mode: %s\n' "$mode"
+printf 'LPC bridge: '
+printf '%s:' "$(value /sys/bus/pci/devices/0000:00:1f.0/vendor)"
+value /sys/bus/pci/devices/0000:00:1f.0/device
+
+if pidof nomadix-fand >/dev/null 2>&1; then
+	printf 'Fan daemon: running (PID %s)\n' "$(pidof nomadix-fand)"
+else
+	printf 'Fan daemon: NOT RUNNING\n'
+	failed=1
+fi
+
+coretemp="$(find_hwmon coretemp)" || coretemp=""
+winbond="$(find_hwmon 'w83627*')" || winbond=""
+if [ -n "$coretemp" ]; then
+	printf 'coretemp: %s\n' "$coretemp"
+	for label in "$coretemp"/temp*_label; do
+		[ -r "$label" ] || continue
+		input="${label%_label}_input"
+		printf '  %s: %s mC\n' "$(cat "$label")" "$(value "$input")"
+	done
+else
+	if [ "$mode" = curve ]; then
+		printf 'coretemp: NOT FOUND (required in curve mode)\n'
+		failed=1
+	else
+		printf 'coretemp: not loaded (not required in full mode)\n'
+	fi
+fi
+
+if [ -n "$winbond" ]; then
+	printf 'Winbond hwmon: %s\n' "$winbond"
+	index=1
+	while [ "$index" -le 4 ]; do
+		printf '  fan%s=%s RPM pwm%s=%s mode=%s\n' \
+			"$index" "$(value "$winbond/fan${index}_input")" \
+			"$index" "$(value "$winbond/pwm${index}")" \
+			"$(value "$winbond/pwm${index}_enable")"
+		index=$((index + 1))
+	done
+else
+	printf 'Winbond hwmon: NOT FOUND\n'
+	failed=1
+fi
+
+printf 'CPU microcode: '
+awk '/^microcode/ { print $3; found=1; exit } END { if (!found) print "unavailable" }' \
+	/proc/cpuinfo
+
+printf 'Watchdog devices:'
+found=0
+for watchdog in /dev/watchdog*; do
+	[ -e "$watchdog" ] || continue
+	printf ' %s' "$watchdog"
+	found=1
+done
+[ "$found" -eq 1 ] || printf ' none'
+printf '\n'
+
+printf 'Intel 82583V interfaces:\n'
+for device in /sys/bus/pci/devices/0000:0[1-6]:00.0; do
+	[ "$(value "$device/vendor")" = "0x8086" ] || continue
+	[ "$(value "$device/device")" = "0x150c" ] || continue
+	for interface in "$device"/net/*; do
+		[ -d "$interface" ] || continue
+		printf '  %s %s %s\n' "$(basename "$device")" \
+			"$(basename "$interface")" "$(value "$interface/address")"
+	done
+done
+
+if [ -d /sys/devices/system/edac/mc ]; then
+	printf 'EDAC controllers:\n'
+	find /sys/devices/system/edac/mc -maxdepth 1 -type d -name 'mc*' -print
+else
+	printf 'EDAC controllers: unavailable; ECC is not proven active\n'
+fi
+
+exit "$failed"

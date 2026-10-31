@@ -1,0 +1,57 @@
+#!/bin/sh
+
+set -eu
+
+usage()
+{
+	echo "Usage: nomadix-flash-readback OUTPUT.bin" >&2
+	exit 2
+}
+
+[ "$#" -eq 1 ] || usage
+output="$1"
+[ ! -e "$output" ] || {
+	echo "Refusing to overwrite existing file: $output" >&2
+	exit 1
+}
+
+case "$output" in
+/*) ;;
+*) output="$PWD/$output" ;;
+esac
+verify_output="$output.verify"
+[ ! -e "$verify_output" ] || {
+	echo "Refusing to overwrite existing file: $verify_output" >&2
+	exit 1
+}
+
+cleanup()
+{
+	[ ! -e "$output" ] || rm -f "$output"
+	[ ! -e "$verify_output" ] || rm -f "$verify_output"
+}
+
+trap cleanup EXIT HUP INT TERM
+flashrom -p internal -r "$output"
+flashrom -p internal -r "$verify_output"
+
+size="$(wc -c < "$output")"
+[ "$size" -eq 8388608 ] || {
+	echo "Unexpected flash size: $size bytes" >&2
+	exit 1
+}
+verify_size="$(wc -c < "$verify_output")"
+[ "$verify_size" -eq 8388608 ] || {
+	echo "Unexpected verification read size: $verify_size bytes" >&2
+	exit 1
+}
+cmp -s "$output" "$verify_output" || {
+	echo "Two consecutive flash reads do not match" >&2
+	exit 1
+}
+rm -f "$verify_output"
+
+chmod 600 "$output"
+trap - EXIT HUP INT TERM
+sha256sum "$output"
+echo "Two matching read-backs complete. This command did not write the flash."
